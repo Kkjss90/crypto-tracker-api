@@ -1,7 +1,7 @@
 {
   "name": "crypto-tracker-api",
   "version": "1.0.0",
-  "main": "src/app.ts",
+  "main": "src/App.ts",
   "private": true,
   "keywords": [],
   "author": "a.m.knyazeva",
