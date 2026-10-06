@@ -1,10 +1,11 @@
 export interface Config{
   port: number;
   dbPath: string;
-  binanceBaseUrl: string;
+  cmcBaseUrl: string;
   httpTimeoutMs: number;
   syncIntervalMs: number;
   bootstrapApiKey: string;
+  cmcApiKey: string;
 }
 
 function readString(env: NodeJS.ProcessEnv, name: string, fallback?: string): string {
@@ -36,7 +37,7 @@ function readDbPath(env: NodeJS.ProcessEnv): string {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     port: readPositiveInt(env, 'PORT', 3000),
-    dbPath: readDbPath(env, 'DB_PATH', './data/app.db'),
+    dbPath: readDbPath(env),
     cmcBaseUrl: readString(env, 'CMC_BASE_URL', 'https://pro-api.coinmarketcap.com'),
     httpTimeoutMs: readPositiveInt(env, 'HTTP_TIMEOUT_MS', 5000),
     syncIntervalMs: readPositiveInt(env, 'SYNC_INTERVAL_MS', 300000),

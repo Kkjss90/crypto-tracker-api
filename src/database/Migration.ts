@@ -30,6 +30,6 @@ export function runMigrations(db: Db): void {
     db.exec('COMMIT');
   } catch (error) {
     db.exec('ROLLBACK');
-    throw new DataBaseError("Can't run migrations", error);
+    throw new DataBaseError("Can't run migrations", error as Error);
   }
 }

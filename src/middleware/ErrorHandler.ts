@@ -1,8 +1,8 @@
 import type {ErrorRequestHandler} from 'express';
-import {AppError} from "../error/AppError";
-import {Logger} from '../utils/Logger';
 import {ValidationError} from "../error/ValidationError";
 import {InternalServerError} from "../error/InternalServerError";
+import {AppError} from "../error/AppError";
+import {Logger} from "../utils/Logger";
 
 function isJsonSyntaxError(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'type' in err && err.type === 'entity.parse.failed';
@@ -23,12 +23,16 @@ export const ErrorHandler: ErrorRequestHandler = (err, req, res, next) => {
   const appError = toAppError(err);
 
   if (appError.isServerError) {
-    Logger.error('Server error', {
-      method: req.method,
-      path: req.path,
-      code: appError.code,
-      error: err instanceof Error ? err.stack : String(err),
-    });
+    Logger.error(
+      'Server error',
+      {
+        requestId: res.locals.requestId,
+        method: req.method,
+        path: req.path,
+        code: appError.code,
+      },
+      err,
+    );
   }
 
   res.status(appError.statusCode).json({

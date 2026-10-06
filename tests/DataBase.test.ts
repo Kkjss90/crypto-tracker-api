@@ -4,6 +4,7 @@ import path from 'node:path';
 import {createDb} from "../src/database/Connection";
 import {createTestDb} from "./utils/DataBaseUtils";
 import {runMigrations} from "../src/database/Migration";
+import {TestDb} from "./utils/TestDb";
 
 describe('createDb', () => {
   it('создаёт вложенные папки и файл БД', () => {
