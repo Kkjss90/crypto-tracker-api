@@ -1,7 +1,7 @@
-import { Router } from 'express';
-import {CoinsController} from "../controller/CoinController";
+import {Router} from 'express';
+import {CoinController} from "../controller/CoinController";
 
-export function createCoinsRouter(controller: CoinsController): Router {
+export function createCoinsRouter(controller: CoinController): Router {
   const router = Router();
 
   router.post('/', controller.create);

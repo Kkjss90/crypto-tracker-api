@@ -1,12 +1,12 @@
-import type { Request, Response } from 'express';
-import {CoinsService} from "../service/CoinService";
+import type {Request, Response} from 'express';
+import {CoinService} from "../service/CoinService";
 import {validateCreateCoin, validateUpdateCoin} from "../utils/validator/CoinValidator";
 import {toCoinResponse} from "../mapper/CoinMapper";
 import {parseId} from "../utils/validator/BasicValidation";
 import {HttpStatusCode} from "axios";
 
-export class CoinsController {
-  constructor(private readonly service: CoinsService) {
+export class CoinController {
+  constructor(private readonly service: CoinService) {
   }
 
   create = async (req: Request, res: Response): Promise<void> => {

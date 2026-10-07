@@ -9,8 +9,9 @@ function asEntity(row: unknown): CoinEntity {
   return row as CoinEntity;
 }
 
-export class CoinsRepository {
-  constructor(private readonly db: Db) {}
+export class CoinRepository {
+  constructor(private readonly db: Db) {
+  }
 
   create(coin: NewCoin): Coin {
     const createdAt = new Date();
@@ -19,7 +20,7 @@ export class CoinsRepository {
       .prepare('INSERT INTO coins (cmc_id, symbol, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
       .run(coin.cmcId, coin.symbol, coin.name, createdAt.toISOString(), updatedAt.toISOString());
 
-    return { id: Number(result.lastInsertRowid), ...coin, createdAt, updatedAt};
+    return {id: Number(result.lastInsertRowid), ...coin, createdAt, updatedAt};
   }
 
   findAll(): Coin[] {

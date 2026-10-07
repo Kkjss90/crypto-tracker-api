@@ -7,10 +7,14 @@ describe('request logging', () => {
 
   beforeEach(() => {
     ctx = createTestApp();
-    jest.spyOn(Logger, 'debug').mockImplementation(() => {});
-    jest.spyOn(Logger, 'info').mockImplementation(() => {});
-    jest.spyOn(Logger, 'warn').mockImplementation(() => {});
-    jest.spyOn(Logger, 'error').mockImplementation(() => {});
+    jest.spyOn(Logger, 'debug').mockImplementation(() => {
+    });
+    jest.spyOn(Logger, 'info').mockImplementation(() => {
+    });
+    jest.spyOn(Logger, 'warn').mockImplementation(() => {
+    });
+    jest.spyOn(Logger, 'error').mockImplementation(() => {
+    });
   });
 
   afterEach(() => {
@@ -19,7 +23,7 @@ describe('request logging', () => {
   });
 
   it('логирует успешный запрос и отдаёт X-Request-Id', async () => {
-    const res = await request(ctx.app).get('/coins');
+    const res = await ctx.http.get('/coins');
 
     expect(res.headers['x-request-id']).toBeDefined();
     expect(Logger.info).toHaveBeenCalledWith(
@@ -34,11 +38,11 @@ describe('request logging', () => {
   });
 
   it('логирует отклонённый запрос на уровне warn', async () => {
-    await request(ctx.app).get('/coins/999');
+    await ctx.http.get('/coins/999');
 
     expect(Logger.warn).toHaveBeenCalledWith(
       'Request rejected',
-      expect.objectContaining({ path: '/coins/999', status: 404 }),
+      expect.objectContaining({path: '/coins/999', status: 404}),
     );
   });
 
@@ -46,16 +50,16 @@ describe('request logging', () => {
     const failure = new Error('boom');
     ctx.provider.failWith = failure;
 
-    const res = await request(ctx.app).post('/coins').send({ symbol: 'BTC' });
+    const res = await ctx.http.post('/coins').send({symbol: 'BTC'});
 
     expect(res.status).toBe(500);
     expect(Logger.error).toHaveBeenCalledWith(
       'Request failed',
-      expect.objectContaining({ status: 500 }),
+      expect.objectContaining({status: 500}),
     );
     expect(Logger.error).toHaveBeenCalledWith(
       'Server error',
-      expect.objectContaining({ code: 'INTERNAL_ERROR' }),
+      expect.objectContaining({code: 'INTERNAL_ERROR'}),
       failure,
     );
   });
@@ -63,7 +67,7 @@ describe('request logging', () => {
   it('не отдаёт клиенту детали внутренней ошибки', async () => {
     ctx.provider.failWith = new Error('secret internal details');
 
-    const res = await request(ctx.app).post('/coins').send({ symbol: 'BTC' });
+    const res = await ctx.http.post('/coins').send({symbol: 'BTC'});
 
     expect(JSON.stringify(res.body)).not.toContain('secret internal details');
   });
@@ -76,10 +80,10 @@ describe('request logging', () => {
   });
 
   it('не пишет в лог токены', async () => {
-    await request(ctx.app)
+    await ctx.http
       .post('/coins')
       .set('Authorization', 'Bearer super-secret-token')
-      .send({ symbol: 'BTC' });
+      .send({symbol: 'BTC'});
 
     const everything = JSON.stringify([
       (Logger.debug as jest.Mock).mock.calls,
@@ -92,11 +96,11 @@ describe('request logging', () => {
   });
 
   it('логирует добавление монеты', async () => {
-    await request(ctx.app).post('/coins').send({ symbol: 'BTC' });
+    await ctx.http.post('/coins').send({symbol: 'BTC'});
 
     expect(Logger.info).toHaveBeenCalledWith(
       'Coin added',
-      expect.objectContaining({ symbol: 'BTC' }),
+      expect.objectContaining({symbol: 'BTC'}),
     );
   });
 });

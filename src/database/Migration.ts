@@ -1,4 +1,4 @@
-import type { Db } from './Connection';
+import type {Db} from './Connection';
 import {DataBaseError} from "../error/DataBaseError";
 
 const SCHEMA = `
@@ -20,7 +20,14 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_price_history_coin_time
     ON price_history (coin_id, fetched_at);
-
+    
+  CREATE TABLE IF NOT EXISTS api_keys (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      key_hash   TEXT NOT NULL UNIQUE,
+      name       TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+  );
 `;
 
 export function runMigrations(db: Db): void {

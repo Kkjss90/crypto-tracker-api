@@ -1,4 +1,3 @@
-import request from 'supertest';
 import {createTestApp, TestApp} from "./utils/TestApp";
 import {ExternalApiError} from "../src/error/ExternalApiError";
 
@@ -13,14 +12,14 @@ describe('coins API', () => {
     ctx.cleanup();
   });
 
-  const addCoin = (symbol: string) => request(ctx.app).post('/coins').send({ symbol });
+  const addCoin = (symbol: string) => ctx.http.post('/coins').send({symbol});
 
   describe('POST /coins', () => {
     it('создаёт монету и возвращает 201 с Location', async () => {
       const res = await addCoin('BTC');
 
       expect(res.status).toBe(201);
-      expect(res.body).toMatchObject({ cmcId: 1, symbol: 'BTC', name: 'Bitcoin' });
+      expect(res.body).toMatchObject({cmcId: 1, symbol: 'BTC', name: 'Bitcoin'});
       expect(res.headers.location).toBe(`/coins/${res.body.id}`);
       expect(new Date(res.body.createdAt).toISOString()).toBe(res.body.createdAt);
       expect(res.body).not.toHaveProperty('cmc_id');
@@ -43,19 +42,19 @@ describe('coins API', () => {
     });
 
     it('400 без тела запроса', async () => {
-      const res = await request(ctx.app).post('/coins');
+      const res = await ctx.http.post('/coins');
 
       expect(res.status).toBe(400);
     });
 
     it('400 на неизвестное поле', async () => {
-      const res = await request(ctx.app).post('/coins').send({ symbol: 'BTC', extra: 1 });
+      const res = await ctx.http.post('/coins').send({symbol: 'BTC', extra: 1});
 
       expect(res.status).toBe(400);
     });
 
     it('400 на битый JSON', async () => {
-      const res = await request(ctx.app)
+      const res = await ctx.http
         .post('/coins')
         .set('Content-Type', 'application/json')
         .send('{bad json');
@@ -97,7 +96,7 @@ describe('coins API', () => {
 
   describe('GET /coins', () => {
     it('возвращает пустой список', async () => {
-      const res = await request(ctx.app).get('/coins');
+      const res = await ctx.http.get('/coins');
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual([]);
@@ -107,7 +106,7 @@ describe('coins API', () => {
       await addCoin('BTC');
       await addCoin('ETH');
 
-      const res = await request(ctx.app).get('/coins');
+      const res = await ctx.http.get('/coins');
 
       expect(res.status).toBe(200);
       expect(res.body.map((c: { symbol: string }) => c.symbol)).toEqual(['BTC', 'ETH']);
@@ -117,20 +116,20 @@ describe('coins API', () => {
   describe('GET /coins/:id', () => {
     it('возвращает монету', async () => {
       const created = await addCoin('BTC');
-      const res = await request(ctx.app).get(`/coins/${created.body.id}`);
+      const res = await ctx.http.get(`/coins/${created.body.id}`);
 
       expect(res.status).toBe(200);
       expect(res.body.symbol).toBe('BTC');
     });
 
     it('404 для несуществующей монеты', async () => {
-      const res = await request(ctx.app).get('/coins/999');
+      const res = await ctx.http.get('/coins/999');
 
       expect(res.status).toBe(404);
     });
 
     it.each(['abc', '0', '-1', '1.5'])('400 для некорректного id "%s"', async (id) => {
-      const res = await request(ctx.app).get(`/coins/${id}`);
+      const res = await ctx.http.get(`/coins/${id}`);
 
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
@@ -140,28 +139,28 @@ describe('coins API', () => {
   describe('PATCH /coins/:id', () => {
     it('переименовывает монету', async () => {
       const created = await addCoin('BTC');
-      const res = await request(ctx.app).patch(`/coins/${created.body.id}`).send({ name: 'Digital Gold' });
+      const res = await ctx.http.patch(`/coins/${created.body.id}`).send({name: 'Digital Gold'});
 
       expect(res.status).toBe(200);
       expect(res.body.name).toBe('Digital Gold');
     });
 
     it('404 для несуществующей монеты', async () => {
-      const res = await request(ctx.app).patch('/coins/999').send({ name: 'X' });
+      const res = await ctx.http.patch('/coins/999').send({name: 'X'});
 
       expect(res.status).toBe(404);
     });
 
     it('400 на пустое имя', async () => {
       const created = await addCoin('BTC');
-      const res = await request(ctx.app).patch(`/coins/${created.body.id}`).send({ name: '   ' });
+      const res = await ctx.http.patch(`/coins/${created.body.id}`).send({name: '   '});
 
       expect(res.status).toBe(400);
     });
 
     it('400 при попытке изменить symbol', async () => {
       const created = await addCoin('BTC');
-      const res = await request(ctx.app).patch(`/coins/${created.body.id}`).send({ symbol: 'ETH' });
+      const res = await ctx.http.patch(`/coins/${created.body.id}`).send({symbol: 'ETH'});
 
       expect(res.status).toBe(400);
     });
@@ -171,21 +170,21 @@ describe('coins API', () => {
     it('удаляет монету и возвращает 204', async () => {
       const created = await addCoin('BTC');
 
-      const del = await request(ctx.app).delete(`/coins/${created.body.id}`);
-      const after = await request(ctx.app).get(`/coins/${created.body.id}`);
+      const del = await ctx.http.delete(`/coins/${created.body.id}`);
+      const after = await ctx.http.get(`/coins/${created.body.id}`);
 
       expect(del.status).toBe(204);
       expect(after.status).toBe(404);
     });
 
     it('404 для несуществующей монеты', async () => {
-      const res = await request(ctx.app).delete('/coins/999');
+      const res = await ctx.http.delete('/coins/999');
 
       expect(res.status).toBe(404);
     });
 
     it('400 для некорректного id', async () => {
-      const res = await request(ctx.app).delete('/coins/abc');
+      const res = await ctx.http.delete('/coins/abc');
 
       expect(res.status).toBe(400);
     });

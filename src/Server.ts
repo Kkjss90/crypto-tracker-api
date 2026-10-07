@@ -5,6 +5,8 @@ import {loadConfig} from "./config/Config";
 import {createDb} from "./database/Connection";
 import {runMigrations} from "./database/Migration";
 import {createApp} from "./App";
+import {AuthService} from "./service/AuthService";
+import {ApiKeyRepository} from "./repository/ApiKeyRepository";
 
 // временно ошибка пока нет клиента CoinMarketCap
 const notConnectedProvider: PriceProvider = {
@@ -39,12 +41,14 @@ function main(): void {
 
   const db = createDb(config.dbPath);
   runMigrations(db);
+  new AuthService(new ApiKeyRepository(db)).ensureKey('bootstrap', config.bootstrapApiKey);
+
   Logger.info('Database ready');
 
-  const app = createApp({ db, provider: notConnectedProvider });
+  const app = createApp({db, provider: notConnectedProvider});
 
   app.listen(config.port, () => {
-    Logger.info('Server started', { port: config.port });
+    Logger.info('Server started', {port: config.port});
   });
 }
 

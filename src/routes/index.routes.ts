@@ -1,13 +1,14 @@
-import { Router } from 'express';
-import {CoinsController} from "../controller/CoinController";
+import {RequestHandler, Router} from 'express';
+import {CoinController} from "../controller/CoinController";
 import {createCoinsRouter} from "./Coin.routes";
 
 export interface RouterDependencies {
-  coins: CoinsController;
+  coins: CoinController;
+  auth: RequestHandler;
 }
 
-export function createRouter({ coins }: RouterDependencies): Router {
+export function createRouter({coins, auth}: RouterDependencies): Router {
   const router = Router();
-  router.use('/coins', createCoinsRouter(coins));
+  router.use('/coins', auth, createCoinsRouter(coins));
   return router;
 }

@@ -1,4 +1,4 @@
-import {CoinsRepository} from "../repository/CoinsRepository";
+import {CoinRepository} from "../repository/CoinRepository";
 import {PriceProvider} from "../client/provider/PriceProvider";
 import {ConflictError} from "../error/ConflictError";
 import {NotFoundError} from "../error/NotFoundError";
@@ -6,11 +6,12 @@ import {Logger} from "../utils/Logger";
 import {isUniqueConstraintError} from "../utils/UniqConstriantValidation";
 import {Coin} from "../model/Coin";
 
-export class CoinsService {
+export class CoinService {
   constructor(
-    private readonly coins: CoinsRepository,
+    private readonly coins: CoinRepository,
     private readonly provider: PriceProvider,
-  ) {}
+  ) {
+  }
 
   async add(symbol: string): Promise<Coin> {
     if (this.coins.findBySymbol(symbol)) {
@@ -27,8 +28,8 @@ export class CoinsService {
     }
 
     try {
-      const coin = this.coins.create({ cmcId: info.cmcId, symbol: info.symbol, name: info.name });
-      Logger.info('Coin added', { coinId: coin.id, symbol: coin.symbol });
+      const coin = this.coins.create({cmcId: info.cmcId, symbol: info.symbol, name: info.name});
+      Logger.info('Coin added', {coinId: coin.id, symbol: coin.symbol});
       return coin;
     } catch (error) {
       if (isUniqueConstraintError(error)) {
@@ -55,7 +56,7 @@ export class CoinsService {
     if (!coin) {
       throw new NotFoundError(`Coin ${id} not found`);
     }
-    Logger.info('Coin renamed', { coinId: id });
+    Logger.info('Coin renamed', {coinId: id});
     return coin;
   }
 
@@ -63,6 +64,6 @@ export class CoinsService {
     if (!this.coins.delete(id)) {
       throw new NotFoundError(`Coin ${id} not found`);
     }
-    Logger.info('Coin removed', { coinId: id });
+    Logger.info('Coin removed', {coinId: id});
   }
 }

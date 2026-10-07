@@ -2,9 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createDb} from "../src/database/Connection";
-import {createTestDb} from "./utils/DataBaseUtils";
 import {runMigrations} from "../src/database/Migration";
-import {TestDb} from "./utils/TestDb";
+import {createTestDb, TestDb} from "./utils/TestDb";
 
 describe('createDb', () => {
   it('создаёт вложенные папки и файл БД', () => {
@@ -16,12 +15,12 @@ describe('createDb', () => {
       expect(fs.existsSync(dbPath)).toBe(true);
     } finally {
       db.close();
-      fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(root, {recursive: true, force: true});
     }
   });
 
   it('включает проверку внешних ключей', () => {
-    const { db, cleanup } = createTestDb();
+    const {db, cleanup} = createTestDb();
     try {
       const row = db.prepare('PRAGMA foreign_keys').get();
       expect(row?.foreign_keys).toBe(1);
@@ -58,7 +57,7 @@ describe('database migrations', () => {
       .all();
     const names = rows.map((r) => r.name).sort();
 
-    expect(names).toEqual(['coins', 'price_history']);
+    expect(names).toEqual(['api_keys', 'coins', 'price_history']);
   });
 
   it('повторный запуск миграций не падает', () => {
@@ -80,7 +79,7 @@ describe('database migrations', () => {
   });
 
   it('хранит цену как число', () => {
-    const { lastInsertRowid } = insertCoin(1, 'BTC');
+    const {lastInsertRowid} = insertCoin(1, 'BTC');
     insertPrice(lastInsertRowid, 43250.12);
 
     const row = testDb.db.prepare('SELECT price FROM price_history').get();
@@ -88,7 +87,7 @@ describe('database migrations', () => {
   });
 
   it('удаляет историю вместе с монетой (каскад)', () => {
-    const { lastInsertRowid } = insertCoin(1, 'BTC');
+    const {lastInsertRowid} = insertCoin(1, 'BTC');
     insertPrice(lastInsertRowid, 1.5);
 
     testDb.db.prepare('DELETE FROM coins WHERE id = ?').run(lastInsertRowid);
