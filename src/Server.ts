@@ -1,22 +1,10 @@
-import {PriceProvider} from "./client/provider/PriceProvider";
-import {ExternalApiError} from "./error/ExternalApiError";
 import {Logger} from "./utils/Logger";
 import {loadConfig} from "./config/Config";
 import {createDb} from "./database/Connection";
 import {runMigrations} from "./database/Migration";
 import {createApp} from "./App";
-import {AuthService} from "./service/AuthService";
-import {ApiKeyRepository} from "./repository/ApiKeyRepository";
-
-// временно ошибка пока нет клиента CoinMarketCap
-const notConnectedProvider: PriceProvider = {
-  async findCoinBySymbol() {
-    throw new ExternalApiError('CoinMarketCap client is not connected yet');
-  },
-  async getPrices() {
-    throw new ExternalApiError('CoinMarketCap client is not connected yet');
-  },
-};
+import {createAuthService} from "./service/AuthService";
+import {CoinMarketCapClient} from "./client/CoinMarketCapClient";
 
 process.on('unhandledRejection', (reason) => {
   Logger.error('Unhandled promise rejection', reason);
@@ -31,6 +19,12 @@ process.on('uncaughtException', (error) => {
 function main(): void {
   const config = loadConfig();
 
+  const provider = new CoinMarketCapClient({
+    baseUrl: config.cmcBaseUrl,
+    apiKey: config.cmcApiKey,
+    timeoutMs: config.httpTimeoutMs,
+  });
+
   Logger.info('Starting application', {
     port: config.port,
     dbPath: config.dbPath,
@@ -41,11 +35,11 @@ function main(): void {
 
   const db = createDb(config.dbPath);
   runMigrations(db);
-  new AuthService(new ApiKeyRepository(db)).ensureKey('bootstrap', config.bootstrapApiKey);
+  createAuthService(db, config.bootstrapApiKeyTtlDays).ensureBootstrapKey(config.bootstrapApiKey);
 
   Logger.info('Database ready');
 
-  const app = createApp({db, provider: notConnectedProvider});
+  const app = createApp({db, provider: provider, apiKeyTtlDays: config.bootstrapApiKeyTtlDays});
 
   app.listen(config.port, () => {
     Logger.info('Server started', {port: config.port});

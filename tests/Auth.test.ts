@@ -1,8 +1,8 @@
 import request from 'supertest';
-import {createTestApp, TEST_API_KEY} from "./utils/TestApp";
+import {createTestApp, TEST_API_KEY, TEST_TTL_DAYS} from "./utils/TestApp";
 import type {TestApp} from "./utils/TestApp";
 import {ApiKeyRepository} from "../src/repository/ApiKeyRepository";
-import {AuthService} from "../src/service/AuthService";
+import {AuthService, createAuthService} from "../src/service/AuthService";
 import {Logger} from "../src/utils/Logger";
 import {createHash} from "node:crypto";
 
@@ -92,7 +92,7 @@ describe('authentication', () => {
 
     expect(warn).toHaveBeenCalledWith(
       'Authentication failed',
-      expect.objectContaining({reason: 'unknown or expired key'}),
+      expect.objectContaining({reason: 'unknown key'}),
     );
     expect(JSON.stringify(warn.mock.calls)).not.toContain('leaked-secret-key');
   });
@@ -105,25 +105,22 @@ describe('authentication', () => {
     expect(rows[0].key_hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('повторное создание ключа не плодит дубликаты', () => {
-    new AuthService(new ApiKeyRepository(ctx.db)).ensureKey('test', TEST_API_KEY);
+  it('повторный засев ключа из env не плодит дубликаты', () => {
+    createAuthService(ctx.db, TEST_TTL_DAYS).ensureBootstrapKey(TEST_API_KEY);
 
     const row = ctx.db.prepare('SELECT COUNT(*) AS n FROM api_keys').get();
     expect(row?.n).toBe(1);
   });
 
   it('401 для истёкшего ключа', async () => {
-    const expiredKey = 'expired-key-value';
-    const keyHash = createHash('sha256').update(expiredKey).digest('hex');
-    const past = new Date(Date.now() - 60 * 60 * 1000);
-
+    const created = await ctx.http.post('/auth/keys');
     ctx.db
-      .prepare('INSERT INTO api_keys (name, key_hash, expires_at, created_at) VALUES (?, ?, ?, ?)')
-      .run('expired', keyHash, past.toISOString(), new Date().toISOString());
+      .prepare('UPDATE api_keys SET expires_at = ? WHERE id = ?')
+      .run(new Date(Date.now() - 1000).toISOString(), created.body.id);
 
-    const res = await ctx.http
+    const res = await request(ctx.app)
       .get('/coins')
-      .set('Authorization', `Bearer ${expiredKey}`);
+      .set('Authorization', `Bearer ${created.body.key}`);
 
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('UNAUTHORIZED');

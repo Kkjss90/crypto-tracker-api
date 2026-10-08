@@ -3,7 +3,7 @@ import {PriceProvider} from "../client/provider/PriceProvider";
 import {ConflictError} from "../error/ConflictError";
 import {NotFoundError} from "../error/NotFoundError";
 import {Logger} from "../utils/Logger";
-import {isUniqueConstraintError} from "../utils/UniqConstriantValidation";
+import {isUniqueConstraintError} from "../error/UniqueConstraintError";
 import {Coin} from "../model/Coin";
 
 export class CoinService {

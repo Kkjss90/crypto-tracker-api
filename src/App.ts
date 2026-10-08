@@ -11,20 +11,27 @@ import {ErrorHandler} from "./middleware/ErrorHandler";
 import {NotFound} from "./middleware/NotFound";
 import {HttpStatusCode} from "axios";
 import {createAuthMiddleware} from "./middleware/Auth";
-import {AuthService} from "./service/AuthService";
-import {ApiKeyRepository} from "./repository/ApiKeyRepository";
+import {createAuthService} from "./service/AuthService";
+import {AuthController} from "./controller/AuthController";
+import {PriceService} from "./service/PriceHistoryService";
+import {PriceController} from "./controller/PriceController";
+import {PriceRepository} from "./repository/PriceRepository";
 
 export interface AppDependencies {
   db: Db;
   provider: PriceProvider;
+  apiKeyTtlDays: number;
 }
 
-export function createApp({db, provider}: AppDependencies): Express {
+export function createApp({db, provider, apiKeyTtlDays}: AppDependencies): Express {
   const coinsRepository = new CoinRepository(db);
   const coinsService = new CoinService(coinsRepository, provider);
   const coinsController = new CoinController(coinsService);
-  const authService = new AuthService(new ApiKeyRepository(db));
+  const pricesService = new PriceService(coinsRepository, new PriceRepository(db), provider);
+  const pricesController = new PriceController(pricesService);
+  const authService = createAuthService(db, apiKeyTtlDays);
   const auth = createAuthMiddleware(authService);
+  const authController = new AuthController(authService);
 
   const app = express();
 
@@ -36,7 +43,7 @@ export function createApp({db, provider}: AppDependencies): Express {
     res.json({status: HttpStatusCode.Ok, code: 'OK'});
   });
 
-  app.use(createRouter({coins: coinsController, auth}));
+  app.use(createRouter({coins: coinsController, prices: pricesController, authController, auth}));
 
   app.use(NotFound);
   app.use(ErrorHandler);

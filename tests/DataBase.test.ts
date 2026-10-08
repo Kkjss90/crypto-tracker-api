@@ -4,6 +4,7 @@ import path from 'node:path';
 import {createDb} from "../src/database/Connection";
 import {runMigrations} from "../src/database/Migration";
 import {createTestDb, TestDb} from "./utils/TestDb";
+import {isUniqueConstraintError} from "../src/error/UniqueConstraintError";
 
 describe('createDb', () => {
   it('создаёт вложенные папки и файл БД', () => {
@@ -57,7 +58,7 @@ describe('database migrations', () => {
       .all();
     const names = rows.map((r) => r.name).sort();
 
-    expect(names).toEqual(['api_keys', 'coins', 'price_history']);
+    expect(names).toEqual(['api_keys', 'coins', 'price_history', 'users']);
   });
 
   it('повторный запуск миграций не падает', () => {
@@ -94,5 +95,23 @@ describe('database migrations', () => {
 
     const left = testDb.db.prepare('SELECT COUNT(*) AS n FROM price_history').get();
     expect(left?.n).toBe(0);
+  });
+  it('isUniqueConstraintError распознаёт ошибку драйвера', () => {
+    insertCoin(1, 'BTC');
+
+    let caught: unknown;
+    try {
+      insertCoin(2, 'BTC');
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(isUniqueConstraintError(caught)).toBe(true);
+  });
+
+  it('isUniqueConstraintError не принимает посторонние значения', () => {
+    expect(isUniqueConstraintError(new Error('boom'))).toBe(false);
+    expect(isUniqueConstraintError('UNIQUE constraint failed')).toBe(false);
+    expect(isUniqueConstraintError(null)).toBe(false);
   });
 });

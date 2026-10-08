@@ -3,14 +3,14 @@ import type {Express} from 'express';
 import {FakeProvider} from "./FakeProvider";
 import {Db} from "../../src/database/Connection";
 import {createTestDb} from "./TestDb";
-import {ApiKeyRepository} from "../../src/repository/ApiKeyRepository";
-import {AuthService} from "../../src/service/AuthService";
+import {createAuthService} from "../../src/service/AuthService";
 import {createApp} from "../../src/App";
 
 export const TEST_API_KEY = 'test-api-key-0123456789';
+export const TEST_TTL_DAYS = 30;
 
-function createAuthorizedHttp(app: Express) {
-  const auth = {Authorization: `Bearer ${TEST_API_KEY}`};
+export function createHttpClient(app: Express, apiKey: string) {
+  const auth = {Authorization: `Bearer ${apiKey}`};
 
   return {
     get: (url: string) => request(app).get(url).set(auth),
@@ -24,16 +24,16 @@ export interface TestApp {
   app: Express;
   provider: FakeProvider;
   db: Db;
-  http: ReturnType<typeof createAuthorizedHttp>;
+  http: ReturnType<typeof createHttpClient>;
   cleanup: () => void;
 }
 
 export function createTestApp(): TestApp {
   const {db, cleanup} = createTestDb();
-  new AuthService(new ApiKeyRepository(db)).ensureKey('test', TEST_API_KEY);
+  createAuthService(db, TEST_TTL_DAYS).ensureBootstrapKey(TEST_API_KEY);
 
   const provider = new FakeProvider();
-  const app = createApp({db, provider});
+  const app = createApp({db, provider, apiKeyTtlDays: TEST_TTL_DAYS});
 
-  return {app, provider, db, http: createAuthorizedHttp(app), cleanup};
+  return {app, provider, db, http: createHttpClient(app, TEST_API_KEY), cleanup};
 }

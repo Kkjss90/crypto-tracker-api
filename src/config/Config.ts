@@ -1,4 +1,6 @@
-export interface Config{
+import {MAX_API_KEY_TTL_DAYS} from "../utils/ApiKeyConstValues";
+
+export interface Config {
   port: number;
   dbPath: string;
   cmcBaseUrl: string;
@@ -6,6 +8,7 @@ export interface Config{
   syncIntervalMs: number;
   bootstrapApiKey: string;
   cmcApiKey: string;
+  bootstrapApiKeyTtlDays: number;
 }
 
 function readString(env: NodeJS.ProcessEnv, name: string, fallback?: string): string {
@@ -34,6 +37,14 @@ function readDbPath(env: NodeJS.ProcessEnv): string {
   return dbPath;
 }
 
+function readApiKeyTtlDays(env: NodeJS.ProcessEnv): number {
+  const days = readPositiveInt(env, 'API_KEY_TTL_DAYS', 90);
+  if (days > MAX_API_KEY_TTL_DAYS) {
+    throw new Error(`Env variable API_KEY_TTL_DAYS must not exceed ${MAX_API_KEY_TTL_DAYS}`);
+  }
+  return days;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     port: readPositiveInt(env, 'PORT', 3000),
@@ -43,5 +54,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     syncIntervalMs: readPositiveInt(env, 'SYNC_INTERVAL_MS', 300000),
     bootstrapApiKey: readString(env, 'BOOTSTRAP_API_KEY'),
     cmcApiKey: readString(env, 'CMC_API_KEY'),
+    bootstrapApiKeyTtlDays: readApiKeyTtlDays(env),
   };
 }
