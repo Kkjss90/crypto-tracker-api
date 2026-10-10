@@ -2,6 +2,7 @@ import {Db} from "../database/Connection";
 import {HistoryQuery, NewPricePoint, PricePoint} from "../model/PricePoint";
 import {PriceHistoryEntity} from "../entity/PriceHistoryEntity";
 import {toPricePoint} from "../mapper/PriceMapper";
+import {withTransaction} from "../database/Transaction";
 
 const DIRECTION = {asc: 'ASC', desc: 'DESC'} as const;
 
@@ -50,5 +51,16 @@ export class PriceRepository {
       items: rows.map((row) => toPricePoint(row as unknown as PriceHistoryEntity)),
       total: totalRow.n,
     };
+  }
+  createMany(points: NewPricePoint[]): number {
+    if (points.length === 0) return 0;
+
+    withTransaction(this.db, () => {
+      const insert = this.db.prepare('INSERT INTO price_history (coin_id, price, fetched_at) VALUES (?, ?, ?)');
+      for (const point of points) {
+        insert.run(point.coinId, point.price, point.fetchedAt.toISOString());
+      }
+    });
+    return points.length;
   }
 }

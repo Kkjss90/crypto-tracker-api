@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createDb, Db} from "../../src/database/Connection";
 import {runMigrations} from "../../src/database/Migration";
+import {Logger} from "../../src/utils/Logger";
 
 export interface TestDb {
   db: Db;
@@ -17,8 +18,12 @@ export function createTestDb(): TestDb {
   return {
     db,
     cleanup: () => {
-      db.close();
-      fs.rmSync(dir, { recursive: true, force: true });
+      try {
+        db.close();
+      } catch (error) {
+        Logger.error('Failed to close the test database', error);
+      }
+      fs.rmSync(dir, {recursive: true, force: true});
     },
   };
 }

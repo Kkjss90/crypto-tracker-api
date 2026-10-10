@@ -16,6 +16,7 @@ import {AuthController} from "./controller/AuthController";
 import {PriceService} from "./service/PriceHistoryService";
 import {PriceController} from "./controller/PriceController";
 import {PriceRepository} from "./repository/PriceRepository";
+import {createDocsRouter} from "./docs/Swagger";
 
 export interface AppDependencies {
   db: Db;
@@ -43,6 +44,7 @@ export function createApp({db, provider, apiKeyTtlDays}: AppDependencies): Expre
     res.json({status: HttpStatusCode.Ok, code: 'OK'});
   });
 
+  app.use(createDocsRouter());
   app.use(createRouter({coins: coinsController, prices: pricesController, authController, auth}));
 
   app.use(NotFound);

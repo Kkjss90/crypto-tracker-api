@@ -2,14 +2,16 @@ import {randomUUID} from 'node:crypto';
 import type {RequestHandler} from 'express';
 import {Logger} from "../utils/Logger";
 
-const SKIPPED_PATHS = new Set(['/health']);
+const SKIPPED_PREFIXES = ['/health', '/docs'];
 
 export const requestLogger: RequestHandler = (req, res, next) => {
   const requestId = randomUUID();
+  const isSkipped = (path: string): boolean =>
+    SKIPPED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
   res.locals.requestId = requestId;
   res.setHeader('X-Request-Id', requestId);
 
-  if (SKIPPED_PATHS.has(req.path)) {
+  if (isSkipped(req.path)) {
     next();
     return;
   }

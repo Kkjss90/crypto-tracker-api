@@ -1,5 +1,7 @@
 import {MAX_API_KEY_TTL_DAYS} from "../utils/ApiKeyConstValues";
 
+const MIN_SYNC_INTERVAL_MS = 60000;
+
 export interface Config {
   port: number;
   dbPath: string;
@@ -9,6 +11,7 @@ export interface Config {
   bootstrapApiKey: string;
   cmcApiKey: string;
   bootstrapApiKeyTtlDays: number;
+  shutdownTimeoutMs: number;
 }
 
 function readString(env: NodeJS.ProcessEnv, name: string, fallback?: string): string {
@@ -38,11 +41,19 @@ function readDbPath(env: NodeJS.ProcessEnv): string {
 }
 
 function readApiKeyTtlDays(env: NodeJS.ProcessEnv): number {
-  const days = readPositiveInt(env, 'API_KEY_TTL_DAYS', 90);
+  const days = readPositiveInt(env, 'BOOTSTRAP_API_KEY_TTL_DAYS', 90);
   if (days > MAX_API_KEY_TTL_DAYS) {
-    throw new Error(`Env variable API_KEY_TTL_DAYS must not exceed ${MAX_API_KEY_TTL_DAYS}`);
+    throw new Error(`Env variable BOOTSTRAP_API_KEY_TTL_DAYS must not exceed ${MAX_API_KEY_TTL_DAYS}`);
   }
   return days;
+}
+
+function readSyncInterval(env: NodeJS.ProcessEnv): number {
+  const ms = readPositiveInt(env, 'SYNC_INTERVAL_MS', 300000);
+  if (ms < MIN_SYNC_INTERVAL_MS) {
+    throw new Error(`Env variable SYNC_INTERVAL_MS must be at least ${MIN_SYNC_INTERVAL_MS}`);
+  }
+  return ms;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -51,9 +62,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dbPath: readDbPath(env),
     cmcBaseUrl: readString(env, 'CMC_BASE_URL', 'https://pro-api.coinmarketcap.com'),
     httpTimeoutMs: readPositiveInt(env, 'HTTP_TIMEOUT_MS', 5000),
-    syncIntervalMs: readPositiveInt(env, 'SYNC_INTERVAL_MS', 300000),
+    syncIntervalMs: readSyncInterval(env),
     bootstrapApiKey: readString(env, 'BOOTSTRAP_API_KEY'),
     cmcApiKey: readString(env, 'CMC_API_KEY'),
     bootstrapApiKeyTtlDays: readApiKeyTtlDays(env),
+    shutdownTimeoutMs: readPositiveInt(env, 'SHUTDOWN_TIMEOUT_MS', 8000),
   };
 }

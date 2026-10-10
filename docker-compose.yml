@@ -1,0 +1,42 @@
+services:
+  api:
+    build:
+      context: .
+      target: prod
+    image: crypto-tracker-api:prod
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DB_PATH: /data/app.db
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    volumes:
+      - app-data:/data
+
+  api-dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      target: dev
+    image: crypto-tracker-api:dev
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      DB_PATH: /data/app.db
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - dev-node-modules:/app/node_modules
+      - app-data-dev:/data
+    command: npm run dev
+
+volumes:
+  app-data:
+  app-data-dev:
+  dev-node-modules:

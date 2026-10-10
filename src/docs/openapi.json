@@ -1,0 +1,618 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Crypto Tracker API",
+    "version": "1.0.0",
+    "description": "REST API for tracking cryptocurrency prices. Prices come from CoinMarketCap and are stored in the local database.\n\n**Authentication.** Send `Authorization: Bearer <API key>`. A key is either the server's `BOOTSTRAP_API_KEY` or a personal key from `POST /auth/register`. Personal keys start with `ctk_`, are shown once and expire.\n\n**Errors.** Every error has the same shape: `{ \"error\": { \"code\", \"message\", \"details\" } }`. Every response carries an `X-Request-Id` header that also appears in the server logs.\n\n**Provider quota.** `GET /coins/{id}/price` calls CoinMarketCap and writes a history row on every call, so it is not idempotent and spends the provider quota."
+  },
+  "servers": [{ "url": "/", "description": "Current host" }],
+  "tags": [
+    { "name": "Health", "description": "Service liveness" },
+    { "name": "Auth", "description": "Registration and API key management" },
+    { "name": "Coins", "description": "Tracked cryptocurrencies" },
+    { "name": "Prices", "description": "Current prices and price history" }
+  ],
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "operationId": "health",
+        "summary": "Liveness check",
+        "description": "Public. Used by the Docker health check.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The service is up",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
+          }
+        }
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "tags": ["Auth"],
+        "operationId": "register",
+        "summary": "Register a user and get the first API key",
+        "description": "Public. The key is returned **once**; only its hash is stored. The key expires after the server's default TTL.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "User created",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always `no-store`: the response contains a secret",
+                "schema": { "type": "string" }
+              }
+            },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/ConflictUser" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/auth/keys": {
+      "get": {
+        "tags": ["Auth"],
+        "operationId": "listApiKeys",
+        "summary": "List your API keys",
+        "description": "Returns metadata only: the key itself is never shown again.",
+        "responses": {
+          "200": {
+            "description": "Your keys, oldest first",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ApiKeyResponse" } }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "tags": ["Auth"],
+        "operationId": "createApiKey",
+        "summary": "Issue a new API key",
+        "description": "Renew your key **before** the current one expires: an expired key cannot issue a new one.",
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateApiKeyRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Key created",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always `no-store`: the response contains a secret",
+                "schema": { "type": "string" }
+              }
+            },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreatedApiKeyResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/auth/keys/{id}": {
+      "delete": {
+        "tags": ["Auth"],
+        "operationId": "revokeApiKey",
+        "summary": "Revoke an API key",
+        "description": "You can only revoke your own keys. The last active key cannot be revoked; expired keys can always be removed.",
+        "parameters": [{ "$ref": "#/components/parameters/KeyId" }],
+        "responses": {
+          "204": { "description": "Key revoked" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/ConflictCoin" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/coins": {
+      "get": {
+        "tags": ["Coins"],
+        "operationId": "listCoins",
+        "summary": "List tracked coins",
+        "responses": {
+          "200": {
+            "description": "All tracked coins, oldest first",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/CoinResponse" } }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "tags": ["Coins"],
+        "operationId": "createCoin",
+        "summary": "Start tracking a coin",
+        "description": "The coin is looked up on CoinMarketCap by ticker, so the name and the provider id come from there. The list of tracked coins is shared by all users.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateCoinRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Coin added",
+            "headers": {
+              "Location": {
+                "description": "URL of the created coin",
+                "schema": { "type": "string" },
+                "example": "/coins/1"
+              }
+            },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CoinResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/ConflictCoin" },
+          "502": { "$ref": "#/components/responses/BadGateway" },
+          "504": { "$ref": "#/components/responses/GatewayTimeout" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/coins/{id}": {
+      "get": {
+        "tags": ["Coins"],
+        "operationId": "getCoin",
+        "summary": "Get a tracked coin",
+        "parameters": [{ "$ref": "#/components/parameters/CoinId" }],
+        "responses": {
+          "200": {
+            "description": "The coin",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CoinResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "patch": {
+        "tags": ["Coins"],
+        "operationId": "updateCoin",
+        "summary": "Rename a tracked coin",
+        "description": "Only the display name can change: the ticker and the provider id identify the coin and its history.",
+        "parameters": [{ "$ref": "#/components/parameters/CoinId" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateCoinRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated coin",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CoinResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "delete": {
+        "tags": ["Coins"],
+        "operationId": "deleteCoin",
+        "summary": "Stop tracking a coin",
+        "description": "Deletes the coin together with its price history.",
+        "parameters": [{ "$ref": "#/components/parameters/CoinId" }],
+        "responses": {
+          "204": { "description": "Coin deleted" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/coins/{id}/price": {
+      "get": {
+        "tags": ["Prices"],
+        "operationId": "getCoinPrice",
+        "summary": "Fetch the current price and record it",
+        "description": "Requests the price from CoinMarketCap, **saves it to the history** and returns it. Not idempotent: every call adds a history row and spends the provider quota.",
+        "parameters": [{ "$ref": "#/components/parameters/CoinId" }],
+        "responses": {
+          "200": {
+            "description": "The price that was just recorded",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PriceResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "502": { "$ref": "#/components/responses/BadGateway" },
+          "504": { "$ref": "#/components/responses/GatewayTimeout" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/coins/{id}/history": {
+      "get": {
+        "tags": ["Prices"],
+        "operationId": "getCoinHistory",
+        "summary": "Get the stored price history",
+        "description": "Reads the local database only (no provider call). Unknown or repeated query parameters are rejected with 400. A coin without history returns an empty list.",
+        "parameters": [
+          { "$ref": "#/components/parameters/CoinId" },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Start of the range, inclusive. ISO 8601 date-time **with** a timezone, e.g. `2026-10-07T10:00:00Z`. A `+` in an offset must be URL-encoded as `%2B`. Years 1970-2200.",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "End of the range, inclusive. Same format as `from`; must not be earlier than `from`.",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 100 }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "Number of records to skip",
+            "schema": { "type": "integer", "minimum": 0, "maximum": 1000000, "default": 0 }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "description": "Sort by time: `desc` (newest first) or `asc`",
+            "schema": { "type": "string", "enum": ["asc", "desc"], "default": "desc" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of history",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HistoryResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "API key",
+        "description": "Paste the key without the `Bearer ` prefix."
+      }
+    },
+    "parameters": {
+      "CoinId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Coin id in this service (not the CoinMarketCap id)",
+        "schema": { "type": "integer", "minimum": 1 },
+        "example": 1
+      },
+      "KeyId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "API key id",
+        "schema": { "type": "integer", "minimum": 1 },
+        "example": 1
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Validation failed: bad body, path parameter or query parameter",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": {
+              "error": {
+                "code": "VALIDATION_ERROR",
+                "message": "Validation failed",
+                "details": [{ "field": "symbol", "message": "must be 1-20 latin letters or digits" }]
+              }
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "The API key is missing, malformed, unknown or expired (the response does not say which)",
+        "headers": {
+          "WWW-Authenticate": { "description": "Always `Bearer`", "schema": { "type": "string" } }
+        },
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "error": { "code": "UNAUTHORIZED", "message": "Invalid or missing API key" } }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "The resource does not exist (or the ticker is unknown to the provider)",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "error": { "code": "NOT_FOUND", "message": "Coin 42 not found" } }
+          }
+        }
+      },
+      "ConflictCoin": {
+        "description": "The request conflicts with the current state",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "error": { "code": "CONFLICT", "message": "Coin BTC is already tracked" } }
+          }
+        }
+      },
+      "ConflictUser": {
+        "description": "The request conflicts with the current state",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "error": { "code": "CONFLICT", "message": "Username kkjss90 is already taken" } }
+          }
+        }
+      },
+      "BadGateway": {
+        "description": "The price provider failed, rejected the request or is unreachable",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "error": { "code": "EXTERNAL_API_ERROR", "message": "Price provider is unreachable" } }
+          }
+        }
+      },
+      "GatewayTimeout": {
+        "description": "The price provider did not answer in time",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "error": { "code": "EXTERNAL_API_ERROR", "message": "Price provider timed out" } }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Unexpected server error. Details are only in the server logs, correlate them by `X-Request-Id`",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "error": { "code": "INTERNAL_ERROR", "message": "Internal server error" } }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "required": ["status"],
+        "additionalProperties": false,
+        "properties": { "status": { "type": "string", "enum": ["ok"] } }
+      },
+      "ValidationIssue": {
+        "type": "object",
+        "required": ["field", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "field": { "type": "string", "example": "symbol" },
+          "message": { "type": "string", "example": "is required and must be a string" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Stable machine-readable code: VALIDATION_ERROR, UNAUTHORIZED, NOT_FOUND, CONFLICT, EXTERNAL_API_ERROR, INTERNAL_ERROR",
+                "example": "NOT_FOUND"
+              },
+              "message": { "type": "string", "example": "Coin 42 not found" },
+              "details": {
+                "type": "array",
+                "description": "Present for validation errors only",
+                "items": { "$ref": "#/components/schemas/ValidationIssue" }
+              }
+            }
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["username"],
+        "additionalProperties": false,
+        "properties": {
+          "username": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_]{3,32}$",
+            "description": "3-32 latin letters, digits or underscores. Case-insensitive: stored in lower case.",
+            "example": "kkjss90"
+          }
+        }
+      },
+      "CreateApiKeyRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50,
+            "default": "api-key",
+            "description": "Label to tell your keys apart",
+            "example": "ci"
+          },
+          "expiresInDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365,
+            "description": "Lifetime of the key. Defaults to the server setting (API_KEY_TTL_DAYS).",
+            "example": 30
+          }
+        }
+      },
+      "UserResponse": {
+        "type": "object",
+        "required": ["id", "username", "createdAt"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "username": { "type": "string", "example": "alice" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ApiKeyResponse": {
+        "type": "object",
+        "required": ["id", "name", "prefix", "createdAt", "expiresAt", "expired"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "name": { "type": "string", "example": "default" },
+          "prefix": {
+            "type": "string",
+            "description": "First characters of the key, to recognise it",
+            "example": "ctk_1a2b3c4d"
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "`null` means the key never expires (only the server's bootstrap key)"
+          },
+          "expired": { "type": "boolean" }
+        }
+      },
+      "CreatedApiKeyResponse": {
+        "type": "object",
+        "required": ["id", "name", "prefix", "createdAt", "expiresAt", "expired", "key"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "integer", "example": 2 },
+          "name": { "type": "string", "example": "ci" },
+          "prefix": { "type": "string", "example": "ctk_1a2b3c4d" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "expiresAt": { "type": "string", "format": "date-time", "nullable": true },
+          "expired": { "type": "boolean" },
+          "key": {
+            "type": "string",
+            "description": "The full key. Shown only in this response: store it now.",
+            "example": "ctk_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        }
+      },
+      "RegisterResponse": {
+        "type": "object",
+        "required": ["user", "apiKey"],
+        "additionalProperties": false,
+        "properties": {
+          "user": { "$ref": "#/components/schemas/UserResponse" },
+          "apiKey": { "$ref": "#/components/schemas/CreatedApiKeyResponse" }
+        }
+      },
+      "CreateCoinRequest": {
+        "type": "object",
+        "required": ["symbol"],
+        "additionalProperties": false,
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20,
+            "description": "CoinMarketCap ticker. Latin letters and digits, case-insensitive: stored in upper case.",
+            "example": "BTC"
+          }
+        }
+      },
+      "UpdateCoinRequest": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 100, "example": "Digital Gold" }
+        }
+      },
+      "CoinResponse": {
+        "type": "object",
+        "required": ["id", "cmcId", "symbol", "name", "createdAt", "updatedAt"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "cmcId": { "type": "integer", "description": "CoinMarketCap id", "example": 1 },
+          "symbol": { "type": "string", "example": "BTC" },
+          "name": { "type": "string", "example": "Bitcoin" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PriceResponse": {
+        "type": "object",
+        "required": ["coinId", "symbol", "currency", "price", "fetchedAt"],
+        "additionalProperties": false,
+        "properties": {
+          "coinId": { "type": "integer", "example": 1 },
+          "symbol": { "type": "string", "example": "BTC" },
+          "currency": { "type": "string", "example": "USD" },
+          "price": { "type": "number", "example": 43250.5 },
+          "fetchedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PricePointResponse": {
+        "type": "object",
+        "required": ["price", "fetchedAt"],
+        "additionalProperties": false,
+        "properties": {
+          "price": { "type": "number", "example": 43250.5 },
+          "fetchedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "HistoryResponse": {
+        "type": "object",
+        "required": ["coinId", "symbol", "currency", "items", "total", "limit", "offset"],
+        "additionalProperties": false,
+        "properties": {
+          "coinId": { "type": "integer", "example": 1 },
+          "symbol": { "type": "string", "example": "BTC" },
+          "currency": { "type": "string", "example": "USD" },
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/PricePointResponse" } },
+          "total": { "type": "integer", "description": "Number of records matching the filter, ignoring paging", "example": 120 },
+          "limit": { "type": "integer", "example": 100 },
+          "offset": { "type": "integer", "example": 0 }
+        }
+      }
+    }
+  }
+}

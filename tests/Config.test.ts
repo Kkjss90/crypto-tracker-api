@@ -13,10 +13,12 @@ describe('loadConfig', () => {
     expect(config.syncIntervalMs).toBe(300000);
     expect(config.bootstrapApiKey).toBe('secret');
     expect(config.cmcApiKey).toBe('cmc-key');
+    expect(config.shutdownTimeoutMs).toBe(8000);
+
   });
 
-  it.each(['0', 'abc', '-1', '366'])('падает на некорректном API_KEY_TTL_DAYS "%s"', (value) => {
-    expect(() => loadConfig({...base, API_KEY_TTL_DAYS: value})).toThrow('API_KEY_TTL_DAYS');
+  it.each(['0', 'abc', '-1', '366'])('падает на некорректном BOOTSTRAP_API_KEY_TTL_DAYS "%s"', (value) => {
+    expect(() => loadConfig({...base, BOOTSTRAP_API_KEY_TTL_DAYS: value})).toThrow('BOOTSTRAP_API_KEY_TTL_DAYS');
   });
 
   it('читает значения из env', () => {
@@ -42,5 +44,13 @@ describe('loadConfig', () => {
 
   it('не разрешает БД в памяти', () => {
     expect(() => loadConfig({...base, DB_PATH: ':memory:'})).toThrow('DB_PATH');
+  });
+
+  it('падает, если интервал синхронизации меньше минуты', () => {
+    expect(() => loadConfig({...base, SYNC_INTERVAL_MS: '59999'})).toThrow('SYNC_INTERVAL_MS');
+  });
+
+  it('падает на некорректном SHUTDOWN_TIMEOUT_MS', () => {
+    expect(() => loadConfig({...base, SHUTDOWN_TIMEOUT_MS: '0'})).toThrow('SHUTDOWN_TIMEOUT_MS');
   });
 });
