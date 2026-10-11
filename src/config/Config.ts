@@ -1,9 +1,12 @@
 import {MAX_API_KEY_TTL_DAYS} from "../utils/ApiKeyConstValues";
+import {resolveTimeZone} from "../utils/Time";
 
 const MIN_SYNC_INTERVAL_MS = 60000;
+const MAX_CURRENCY_SYNC_HOURS = 168;
 
 export interface Config {
   port: number;
+  timeZone: string;
   dbPath: string;
   cmcBaseUrl: string;
   httpTimeoutMs: number;
@@ -12,6 +15,7 @@ export interface Config {
   cmcApiKey: string;
   bootstrapApiKeyTtlDays: number;
   shutdownTimeoutMs: number;
+  currencySyncIntervalMs: number;
 }
 
 function readString(env: NodeJS.ProcessEnv, name: string, fallback?: string): string {
@@ -56,9 +60,27 @@ function readSyncInterval(env: NodeJS.ProcessEnv): number {
   return ms;
 }
 
+function readTimeZone(env: NodeJS.ProcessEnv): string {
+  const raw = readString(env, 'TIME_ZONE', 'UTC');
+  try {
+    return resolveTimeZone(raw);
+  } catch {
+    throw new Error(`Env variable TIME_ZONE must be an IANA time zone name (e.g. Europe/Moscow), got "${raw}"`);
+  }
+}
+
+function readCurrencySyncIntervalMs(env: NodeJS.ProcessEnv): number {
+  const hours = readPositiveInt(env, 'CURRENCY_SYNC_INTERVAL_HOURS', 24);
+  if (hours > MAX_CURRENCY_SYNC_HOURS) {
+    throw new Error(`Env variable CURRENCY_SYNC_INTERVAL_HOURS must not exceed ${MAX_CURRENCY_SYNC_HOURS}`);
+  }
+  return hours * 3_600_000;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     port: readPositiveInt(env, 'PORT', 3000),
+    timeZone: readTimeZone(env),
     dbPath: readDbPath(env),
     cmcBaseUrl: readString(env, 'CMC_BASE_URL', 'https://pro-api.coinmarketcap.com'),
     httpTimeoutMs: readPositiveInt(env, 'HTTP_TIMEOUT_MS', 5000),
@@ -67,5 +89,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     cmcApiKey: readString(env, 'CMC_API_KEY'),
     bootstrapApiKeyTtlDays: readApiKeyTtlDays(env),
     shutdownTimeoutMs: readPositiveInt(env, 'SHUTDOWN_TIMEOUT_MS', 8000),
+    currencySyncIntervalMs: readCurrencySyncIntervalMs(env),
   };
 }

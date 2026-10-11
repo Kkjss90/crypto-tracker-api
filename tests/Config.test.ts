@@ -7,6 +7,7 @@ describe('loadConfig', () => {
     const config = loadConfig(base);
 
     expect(config.port).toBe(3000);
+    expect(config.timeZone).toBe('UTC');
     expect(config.dbPath).toBe('./data/app.db');
     expect(config.cmcBaseUrl).toBe('https://pro-api.coinmarketcap.com');
     expect(config.httpTimeoutMs).toBe(5000);
@@ -14,11 +15,16 @@ describe('loadConfig', () => {
     expect(config.bootstrapApiKey).toBe('secret');
     expect(config.cmcApiKey).toBe('cmc-key');
     expect(config.shutdownTimeoutMs).toBe(8000);
+    expect(config.currencySyncIntervalMs).toBe(24 * 3_600_000);
 
   });
 
   it.each(['0', 'abc', '-1', '366'])('падает на некорректном BOOTSTRAP_API_KEY_TTL_DAYS "%s"', (value) => {
     expect(() => loadConfig({...base, BOOTSTRAP_API_KEY_TTL_DAYS: value})).toThrow('BOOTSTRAP_API_KEY_TTL_DAYS');
+  });
+
+  it.each(['0', 'abc', '-1', '169'])('падает на некорректном CURRENCY_SYNC_INTERVAL_HOURS "%s"', (value) => {
+    expect(() => loadConfig({ ...base, CURRENCY_SYNC_INTERVAL_HOURS: value })).toThrow('CURRENCY_SYNC_INTERVAL_HOURS');
   });
 
   it('читает значения из env', () => {
@@ -52,5 +58,13 @@ describe('loadConfig', () => {
 
   it('падает на некорректном SHUTDOWN_TIMEOUT_MS', () => {
     expect(() => loadConfig({...base, SHUTDOWN_TIMEOUT_MS: '0'})).toThrow('SHUTDOWN_TIMEOUT_MS');
+  });
+
+  it('нормализует TIME_ZONE', () => {
+    expect(loadConfig({...base, TIME_ZONE: 'europe/moscow'}).timeZone).toBe('Europe/Moscow');
+  });
+
+  it('падает на неизвестном TIME_ZONE', () => {
+    expect(() => loadConfig({...base, TIME_ZONE: 'Mars/Olympus'})).toThrow('TIME_ZONE');
   });
 });

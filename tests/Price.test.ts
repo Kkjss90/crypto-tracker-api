@@ -3,6 +3,8 @@ import request from 'supertest';
 import {createTestApp, TestApp} from "./utils/TestApp";
 import {PriceRepository} from "../src/repository/PriceRepository";
 import {ExternalApiError} from "../src/error/ExternalApiError";
+import {CoinRepository} from "../src/repository/CoinRepository";
+import {PriceSyncJob} from "../src/job/PriceSyncJob";
 
 const T10 = '2026-10-07T10:00:00.000Z';
 const T11 = '2026-10-07T11:00:00.000Z';
@@ -49,8 +51,7 @@ describe('prices API', () => {
       expect(res.body).toMatchObject({coinId: id, symbol: 'BTC', currency: 'USD', price: 43000});
       expect(new Date(res.body.fetchedAt).toISOString()).toBe(res.body.fetchedAt);
       expect(history.body.total).toBe(1);
-      expect(history.body.items[0]).toEqual({price: 43000, fetchedAt: res.body.fetchedAt});
-    });
+      expect(res.body).toMatchObject({ coinId: id, symbol: 'BTC', currency: 'USD', price: 43000, recorded: true });    });
 
     it('404 для несуществующей монеты', async () => {
       const res = await ctx.http.get('/coins/999/price');
@@ -291,6 +292,99 @@ describe('prices API', () => {
       const res = await ctx.http.get('/coins/abc/history');
 
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('дубликаты цен', () => {
+    const priceUrl = (id: number) => `/coins/${id}/price`;
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+    const storedPrices = () => ctx.db.prepare('SELECT price FROM price_history ORDER BY id').all().map((r) => r.price);
+
+    it('повторный запрос с той же ценой возвращает цену, но не пишет в историю', async () => {
+      const id = await addCoin('BTC');
+
+      const first = await ctx.http.get(priceUrl(id));
+      const second = await ctx.http.get(priceUrl(id));
+
+      expect(first.body.recorded).toBe(true);
+      expect(second.status).toBe(200);
+      expect(second.body).toMatchObject({ coinId: id, price: 43000, recorded: false });
+      expect(historyRowCount()).toBe(1);
+    });
+
+    it('fetchedAt ответа это момент запроса, а в истории остаётся время записи', async () => {
+      const id = await addCoin('BTC');
+
+      const first = await ctx.http.get(priceUrl(id));
+      await sleep(5);
+      const second = await ctx.http.get(priceUrl(id));
+      const history = await ctx.http.get(`/coins/${id}/history`);
+
+      expect(Date.parse(second.body.fetchedAt)).toBeGreaterThan(Date.parse(first.body.fetchedAt));
+      expect(history.body.items).toEqual([{ price: 43000, fetchedAt: first.body.fetchedAt }]);
+    });
+
+    it('изменившаяся цена сохраняется', async () => {
+      const id = await addCoin('BTC');
+      await ctx.http.get(priceUrl(id));
+      ctx.provider.prices.set(1, 44000);
+
+      const res = await ctx.http.get(priceUrl(id));
+
+      expect(res.body).toMatchObject({ price: 44000, recorded: true });
+      expect(storedPrices()).toEqual([43000, 44000]);
+    });
+
+    it('возврат к прежней цене сохраняется (сравнение только с последней записью)', async () => {
+      const id = await addCoin('BTC');
+      await ctx.http.get(priceUrl(id));
+      ctx.provider.prices.set(1, 44000);
+      await ctx.http.get(priceUrl(id));
+      ctx.provider.prices.set(1, 43000);
+      await ctx.http.get(priceUrl(id));
+
+      expect(storedPrices()).toEqual([43000, 44000, 43000]);
+    });
+
+    it('учитывает записи фоновой задачи', async () => {
+      const id = await addCoin('BTC');
+      const job = new PriceSyncJob({
+        coins: new CoinRepository(ctx.db),
+        prices: new PriceRepository(ctx.db),
+        provider: ctx.provider,
+        intervalMs: 60_000,
+      });
+      await job.runOnce();
+
+      const res = await ctx.http.get(priceUrl(id));
+
+      expect(res.body.recorded).toBe(false);
+      expect(historyRowCount()).toBe(1);
+    });
+
+    it('фоновая задача учитывает записи ручного запроса', async () => {
+      const id = await addCoin('BTC');
+      await ctx.http.get(priceUrl(id));
+      const job = new PriceSyncJob({
+        coins: new CoinRepository(ctx.db),
+        prices: new PriceRepository(ctx.db),
+        provider: ctx.provider,
+        intervalMs: 60_000,
+      });
+
+      const result = await job.runOnce();
+
+      expect(result).toEqual({ tracked: 1, saved: 0, unchanged: 1 });
+    });
+
+    it('два одновременных запроса с одной ценой дают ровно одну запись', async () => {
+      const id = await addCoin('BTC');
+      ctx.provider.delayMs = 20;
+
+      const [a, b] = await Promise.all([ctx.http.get(priceUrl(id)), ctx.http.get(priceUrl(id))]);
+
+      expect([a.body.recorded, b.body.recorded].sort()).toEqual([false, true]);
+      expect(historyRowCount()).toBe(1);
     });
   });
 });

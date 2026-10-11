@@ -38,6 +38,18 @@ const SCHEMA = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys (user_id);
+  
+  CREATE TABLE IF NOT EXISTS currencies (
+    cmc_id     INTEGER PRIMARY KEY,
+    symbol     TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    slug       TEXT NOT NULL,
+    cmc_rank   INTEGER,
+    updated_at TEXT NOT NULL
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_currencies_rank ON currencies (cmc_rank);
+  CREATE INDEX IF NOT EXISTS idx_currencies_symbol ON currencies (symbol);
 `;
 
 export function runMigrations(db: Db): void {

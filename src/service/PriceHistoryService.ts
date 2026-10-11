@@ -1,16 +1,11 @@
 import {Coin} from "../model/Coin";
-import {HistoryPage, HistoryQuery, PricePoint} from "../model/PricePoint";
+import {CurrentPrice, HistoryPage, HistoryQuery} from "../model/PricePoint";
 import {CoinRepository} from "../repository/CoinRepository";
 import {PriceRepository} from "../repository/PriceRepository";
 import {PriceProvider} from "../client/provider/PriceProvider";
 import {Logger} from "../utils/Logger";
 import {ExternalApiError} from "../error/ExternalApiError";
 import {NotFoundError} from "../error/NotFoundError";
-
-export interface CurrentPrice {
-  coin: Coin;
-  point: PricePoint;
-}
 
 export interface HistoryResult {
   coin: Coin;
@@ -31,15 +26,16 @@ export class PriceService {
     const fetched = await this.provider.getPrices([coin.cmcId]);
     const price = fetched.get(coin.cmcId);
     if (price === undefined) {
-      Logger.warn('Provider returned no price for a tracked coin', {coinId, cmcId: coin.cmcId});
+      Logger.warn('Provider returned no price for a tracked coin', { coinId, cmcId: coin.cmcId });
       throw new ExternalApiError('Price is not available for this coin');
     }
 
     const current = this.requireCoin(coinId);
-    const point = this.prices.create({coinId: current.id, price, fetchedAt: new Date()});
+    const fetchedAt = new Date();
+    const saved = this.prices.saveChanged([{ coinId: current.id, price, fetchedAt }]);
 
-    Logger.debug('Price recorded', {coinId, priceId: point.id});
-    return {coin: current, point};
+    Logger.debug('Price checked', { coinId, recorded: saved > 0 });
+    return { coin: current, price, fetchedAt, recorded: saved > 0 };
   }
 
   history(coinId: number, query: HistoryQuery): HistoryResult {

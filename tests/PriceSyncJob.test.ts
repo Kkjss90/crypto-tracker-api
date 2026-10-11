@@ -19,20 +19,24 @@ describe('PriceSyncJob', () => {
   const rows = () =>
     testDb.db.prepare('SELECT coin_id, price, fetched_at FROM price_history ORDER BY id').all();
 
-  const addBtc = () => coins.create({ cmcId: 1, symbol: 'BTC', name: 'Bitcoin' });
-  const addEth = () => coins.create({ cmcId: 1027, symbol: 'ETH', name: 'Ethereum' });
+  const addBtc = () => coins.create({cmcId: 1, symbol: 'BTC', name: 'Bitcoin'});
+  const addEth = () => coins.create({cmcId: 1027, symbol: 'ETH', name: 'Ethereum'});
 
   beforeEach(() => {
     testDb = createTestDb();
     provider = new FakeProvider();
     coins = new CoinRepository(testDb.db);
     prices = new PriceRepository(testDb.db);
-    job = new PriceSyncJob({ coins, prices, provider, intervalMs: INTERVAL });
+    job = new PriceSyncJob({coins, prices, provider, intervalMs: INTERVAL});
 
-    jest.spyOn(Logger, 'debug').mockImplementation(() => {});
-    jest.spyOn(Logger, 'info').mockImplementation(() => {});
-    jest.spyOn(Logger, 'warn').mockImplementation(() => {});
-    jest.spyOn(Logger, 'error').mockImplementation(() => {});
+    jest.spyOn(Logger, 'debug').mockImplementation(() => {
+    });
+    jest.spyOn(Logger, 'info').mockImplementation(() => {
+    });
+    jest.spyOn(Logger, 'warn').mockImplementation(() => {
+    });
+    jest.spyOn(Logger, 'error').mockImplementation(() => {
+    });
   });
 
   afterEach(async () => {
@@ -50,7 +54,7 @@ describe('PriceSyncJob', () => {
 
       const result = await job.runOnce();
 
-      expect(result).toEqual({ tracked: 2, saved: 2 });
+      expect(result).toEqual({tracked: 2, saved: 2, unchanged: 0});
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy).toHaveBeenCalledWith([1, 1027]);
 
@@ -67,7 +71,7 @@ describe('PriceSyncJob', () => {
 
       const result = await job.runOnce();
 
-      expect(result).toEqual({ tracked: 0, saved: 0 });
+      expect(result).toEqual({tracked: 0, saved: 0, unchanged: 0});
       expect(spy).not.toHaveBeenCalled();
       expect(rows()).toHaveLength(0);
     });
@@ -79,7 +83,7 @@ describe('PriceSyncJob', () => {
 
       const result = await job.runOnce();
 
-      expect(result).toEqual({ tracked: 2, saved: 1 });
+      expect(result).toEqual({tracked: 2, saved: 1, unchanged: 0});
       expect(rows()).toHaveLength(1);
     });
 
@@ -102,7 +106,7 @@ describe('PriceSyncJob', () => {
       coins.delete(btc.id);
       const result = await run;
 
-      expect(result).toEqual({ tracked: 1, saved: 1 });
+      expect(result).toEqual({tracked: 1, saved: 1, unchanged: 0});
       expect(rows().map((row) => row.coin_id)).toEqual([eth.id]);
     });
 
@@ -115,20 +119,20 @@ describe('PriceSyncJob', () => {
       addEth();
       const result = await run;
 
-      expect(result).toEqual({ tracked: 2, saved: 1 });
+      expect(result).toEqual({tracked: 2, saved: 1, unchanged: 0});
       expect(rows().map((row) => row.coin_id)).toEqual([btc.id]);
     });
   });
 
-  describe('PricesRepository.createMany', () => {
+  describe('PricesRepository.saveChanged', () => {
     it('откатывает всю пачку, если одна запись некорректна', () => {
       const btc = addBtc();
       const fetchedAt = new Date();
 
       expect(() =>
-        prices.createMany([
-          { coinId: btc.id, price: 1, fetchedAt },
-          { coinId: 9999, price: 2, fetchedAt },
+        prices.saveChanged([
+          {coinId: btc.id, price: 1, fetchedAt},
+          {coinId: 9999, price: 2, fetchedAt},
         ]),
       ).toThrow();
 
@@ -138,7 +142,7 @@ describe('PriceSyncJob', () => {
 
   describe('расписание', () => {
     beforeEach(() => {
-      jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+      jest.useFakeTimers({doNotFake: ['nextTick', 'queueMicrotask']});
       addBtc();
     });
 
@@ -148,6 +152,7 @@ describe('PriceSyncJob', () => {
       job.start();
       await jest.advanceTimersByTimeAsync(0);
       expect(spy).toHaveBeenCalledTimes(1);
+      provider.prices.set(1, 44000);
 
       await jest.advanceTimersByTimeAsync(INTERVAL - 1);
       expect(spy).toHaveBeenCalledTimes(1);
@@ -194,7 +199,7 @@ describe('PriceSyncJob', () => {
 
       expect(Logger.warn).toHaveBeenCalledWith(
         'Price sync failed: provider error',
-        expect.objectContaining({ code: 'EXTERNAL_API_ERROR' }),
+        expect.objectContaining({code: 'EXTERNAL_API_ERROR'}),
       );
       expect(rows()).toHaveLength(0);
 
@@ -265,6 +270,75 @@ describe('PriceSyncJob', () => {
 
       expect(spy).not.toHaveBeenCalled();
       expect(jest.getTimerCount()).toBe(0);
+    });
+  });
+
+  describe('неизменившиеся цены', () => {
+    const savedPrices = () => rows().map((row) => row.price);
+
+    it('повторная синхронизация с той же ценой ничего не пишет', async () => {
+      addBtc();
+
+      const first = await job.runOnce();
+      const second = await job.runOnce();
+
+      expect(first).toEqual({tracked: 1, saved: 1, unchanged: 0});
+      expect(second).toEqual({tracked: 1, saved: 0, unchanged: 1});
+      expect(rows()).toHaveLength(1);
+    });
+
+    it('изменившаяся цена сохраняется', async () => {
+      addBtc();
+      await job.runOnce();
+      provider.prices.set(1, 44000);
+
+      const result = await job.runOnce();
+
+      expect(result).toEqual({tracked: 1, saved: 1, unchanged: 0});
+      expect(savedPrices()).toEqual([43000, 44000]);
+    });
+
+    it('возврат к прежней цене сохраняется (сравнение только с последней записью)', async () => {
+      addBtc();
+      await job.runOnce();
+      provider.prices.set(1, 44000);
+      await job.runOnce();
+      provider.prices.set(1, 43000);
+      await job.runOnce();
+
+      expect(savedPrices()).toEqual([43000, 44000, 43000]);
+    });
+
+    it('монеты сравниваются независимо', async () => {
+      addBtc();
+      addEth();
+      await job.runOnce();
+      provider.prices.set(1027, 2600);
+
+      const result = await job.runOnce();
+
+      expect(result).toEqual({tracked: 2, saved: 1, unchanged: 1});
+      expect(savedPrices()).toEqual([43000, 2500, 2600]);
+    });
+
+    it('сравнивает с последней записью, в том числе сделанной вручную', async () => {
+      const btc = addBtc();
+      prices.saveChanged([{coinId: btc.id, price: 43000, fetchedAt: new Date()}]);
+
+      const result = await job.runOnce();
+
+      expect(result).toEqual({tracked: 1, saved: 0, unchanged: 1});
+    });
+
+    it('пишет в лог, сколько цен не изменилось', async () => {
+      addBtc();
+      await job.runOnce();
+      await job.runOnce();
+
+      expect(Logger.info).toHaveBeenLastCalledWith(
+        'Price sync completed',
+        expect.objectContaining({saved: 0, unchanged: 1}),
+      );
     });
   });
 });

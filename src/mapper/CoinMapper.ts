@@ -1,6 +1,7 @@
 import {CoinEntity} from "../entity/CoinEntity";
 import {Coin} from "../model/Coin";
 import {CoinResponse} from "../dto/response/CoinResponse";
+import {TimeFormatter} from "../utils/Time";
 
 export function toCoin(entity: CoinEntity): Coin {
   return {
@@ -13,13 +14,13 @@ export function toCoin(entity: CoinEntity): Coin {
   };
 }
 
-export function toCoinResponse(coin: Coin): CoinResponse {
+export function toCoinResponse(coin: Coin, formatTime: TimeFormatter): CoinResponse {
   return {
     id: coin.id,
     cmcId: coin.cmcId,
     symbol: coin.symbol,
     name: coin.name,
-    createdAt: coin.createdAt.toISOString(),
-    updatedAt: coin.updatedAt.toISOString(),
+    createdAt: formatTime(coin.createdAt),
+    updatedAt: formatTime(coin.createdAt),
   };
 }

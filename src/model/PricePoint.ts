@@ -1,3 +1,5 @@
+import {Coin} from "./Coin";
+
 export const PRICE_CURRENCY = 'USD';
 
 export interface PricePoint {
@@ -24,4 +26,11 @@ export interface HistoryPage {
   total: number;
   limit: number;
   offset: number;
+}
+
+export interface CurrentPrice {
+  coin: Coin;
+  price: number;
+  fetchedAt: Date;
+  recorded: boolean;
 }

@@ -10,7 +10,8 @@
     { "name": "Health", "description": "Service liveness" },
     { "name": "Auth", "description": "Registration and API key management" },
     { "name": "Coins", "description": "Tracked cryptocurrencies" },
-    { "name": "Prices", "description": "Current prices and price history" }
+    { "name": "Prices", "description": "Current prices and price history" },
+    { "name": "Currencies", "description": "Catalog of cryptocurrencies known to CoinMarketCap" }
   ],
   "security": [{ "bearerAuth": [] }],
   "paths": {
@@ -225,8 +226,8 @@
       "get": {
         "tags": ["Prices"],
         "operationId": "getCoinPrice",
-        "summary": "Fetch the current price and record it",
-        "description": "Requests the price from CoinMarketCap, **saves it to the history** and returns it. Not idempotent: every call adds a history row and spends the provider quota.",
+        "summary": "Fetch the current price",
+        "description": "Requests the price from CoinMarketCap and returns it. The price is saved to the history only if it differs from the last stored one (`recorded` tells which). Every call spends the provider quota.",
         "parameters": [{ "$ref": "#/components/parameters/CoinId" }],
         "responses": {
           "200": {
@@ -294,6 +295,46 @@
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/currencies": {
+      "get": {
+        "tags": ["Currencies"],
+        "operationId": "listCurrencies",
+        "summary": "Browse the catalog of cryptocurrencies",
+        "description": "Reads the local catalog (no provider call), which is refreshed in the background once a day: see `syncedAt`. It is empty until the first refresh succeeds. Use a ticker from here with `POST /coins`. `search` is a case-insensitive substring of the ticker or the name (only ASCII letters are case-folded). Unknown or repeated query parameters are rejected with 400.",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "description": "Substring of the ticker or name",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 50 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 500, "default": 100 }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "Number of records to skip",
+            "schema": { "type": "integer", "minimum": 0, "maximum": 1000000, "default": 0 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of the catalog, best ranked first",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CurrencyListResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
@@ -580,14 +621,22 @@
       },
       "PriceResponse": {
         "type": "object",
-        "required": ["coinId", "symbol", "currency", "price", "fetchedAt"],
+        "required": ["coinId", "symbol", "currency", "price", "fetchedAt", "recorded"],
         "additionalProperties": false,
         "properties": {
           "coinId": { "type": "integer", "example": 1 },
           "symbol": { "type": "string", "example": "BTC" },
           "currency": { "type": "string", "example": "USD" },
           "price": { "type": "number", "example": 43250.5 },
-          "fetchedAt": { "type": "string", "format": "date-time" }
+          "fetchedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the price was requested from the provider"
+          },
+          "recorded": {
+            "type": "boolean",
+            "description": "`true` if a new history record was added, `false` if the price equals the last stored one"
+          }
         }
       },
       "PricePointResponse": {
@@ -611,6 +660,30 @@
           "total": { "type": "integer", "description": "Number of records matching the filter, ignoring paging", "example": 120 },
           "limit": { "type": "integer", "example": 100 },
           "offset": { "type": "integer", "example": 0 }
+        }
+      },
+      "CurrencyResponse": {
+        "type": "object",
+        "required": ["cmcId", "symbol", "name", "slug", "rank"],
+        "additionalProperties": false,
+        "properties": {
+          "cmcId": { "type": "integer", "example": 1 },
+          "symbol": { "type": "string", "example": "BTC" },
+          "name": { "type": "string", "example": "Bitcoin" },
+          "slug": { "type": "string", "example": "bitcoin" },
+          "rank": { "type": "integer", "nullable": true, "description": "CoinMarketCap rank, `null` if unranked", "example": 1 }
+        }
+      },
+      "CurrencyListResponse": {
+        "type": "object",
+        "required": ["items", "total", "limit", "offset", "syncedAt"],
+        "additionalProperties": false,
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/CurrencyResponse" } },
+          "total": { "type": "integer", "description": "Number of records matching `search`, ignoring paging", "example": 10432 },
+          "limit": { "type": "integer", "example": 100 },
+          "offset": { "type": "integer", "example": 0 },
+          "syncedAt": { "type": "string", "format": "date-time", "nullable": true, "description": "When the catalog was last refreshed, `null` before the first refresh" }
         }
       }
     }

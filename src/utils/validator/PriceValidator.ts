@@ -1,4 +1,4 @@
-import {isPlainObject, throwIfIssues, unknownFieldIssues} from "./BasicValidation";
+import {isPlainObject, readInteger, readSingleValue, throwIfIssues, unknownFieldIssues} from "./BasicValidation";
 import type {ValidationIssue} from "./BasicValidation";
 import {HistoryQuery, SortOrder} from "../../model/PricePoint";
 
@@ -27,15 +27,7 @@ function parseTimestamp(raw: string): Date | undefined {
   return date;
 }
 
-function readSingleValue(query: Record<string, unknown>, field: string, issues: ValidationIssue[]): string | undefined {
-  const value = query[field];
-  if (value === undefined) return undefined;
-  if (typeof value !== 'string') {
-    issues.push({field, message: 'must be a single value'});
-    return undefined;
-  }
-  return value;
-}
+
 
 function readTimestamp(query: Record<string, unknown>, field: string, issues: ValidationIssue[]): Date | undefined {
   const raw = readSingleValue(query, field, issues);
@@ -49,23 +41,6 @@ function readTimestamp(query: Record<string, unknown>, field: string, issues: Va
     });
   }
   return date;
-}
-
-function readInteger(
-  query: Record<string, unknown>,
-  field: string,
-  limits: { min: number; max: number; fallback: number },
-  issues: ValidationIssue[],
-): number {
-  const raw = readSingleValue(query, field, issues);
-  if (raw === undefined) return limits.fallback;
-
-  const value = Number(raw);
-  if (!/^\d+$/.test(raw) || value < limits.min || value > limits.max) {
-    issues.push({field, message: `must be an integer between ${limits.min} and ${limits.max}`});
-    return limits.fallback;
-  }
-  return value;
 }
 
 export function validateHistoryQuery(query: unknown): HistoryQuery {

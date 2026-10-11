@@ -58,7 +58,7 @@ describe('database migrations', () => {
       .all();
     const names = rows.map((r) => r.name).sort();
 
-    expect(names).toEqual(['api_keys', 'coins', 'price_history', 'users']);
+    expect(names).toEqual(['api_keys', 'coins', 'currencies', 'price_history', 'users']);
   });
 
   it('повторный запуск миграций не падает', () => {

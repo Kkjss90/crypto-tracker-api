@@ -4,4 +4,5 @@ export interface PriceResponse extends PricePointResponse {
   coinId: number;
   symbol: string;
   currency: string;
+  recorded: boolean;
 }

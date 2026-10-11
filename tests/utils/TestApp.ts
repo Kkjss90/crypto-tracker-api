@@ -28,12 +28,16 @@ export interface TestApp {
   cleanup: () => void;
 }
 
-export function createTestApp(): TestApp {
-  const {db, cleanup} = createTestDb();
+export interface TestAppOptions {
+  timeZone?: string;
+}
+
+export function createTestApp(options: TestAppOptions = {}): TestApp {
+  const { db, cleanup } = createTestDb();
   createAuthService(db, TEST_TTL_DAYS).ensureBootstrapKey(TEST_API_KEY);
 
   const provider = new FakeProvider();
-  const app = createApp({db, provider, apiKeyTtlDays: TEST_TTL_DAYS});
+  const app = createApp({ db, provider, apiKeyTtlDays: TEST_TTL_DAYS, timeZone: options.timeZone ?? 'UTC' });
 
-  return {app, provider, db, http: createHttpClient(app, TEST_API_KEY), cleanup};
+  return { app, provider, db, http: createHttpClient(app, TEST_API_KEY), cleanup };
 }

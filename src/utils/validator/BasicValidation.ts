@@ -34,3 +34,30 @@ export function requireObject(body: unknown): Record<string, unknown> {
   }
   return body;
 }
+
+export function readSingleValue(query: Record<string, unknown>, field: string, issues: ValidationIssue[]): string | undefined {
+  const value = query[field];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') {
+    issues.push({field, message: 'must be a single value'});
+    return undefined;
+  }
+  return value;
+}
+
+export function readInteger(
+  query: Record<string, unknown>,
+  field: string,
+  limits: { min: number; max: number; fallback: number },
+  issues: ValidationIssue[],
+): number {
+  const raw = readSingleValue(query, field, issues);
+  if (raw === undefined) return limits.fallback;
+
+  const value = Number(raw);
+  if (!/^\d+$/.test(raw) || value < limits.min || value > limits.max) {
+    issues.push({field, message: `must be an integer between ${limits.min} and ${limits.max}`});
+    return limits.fallback;
+  }
+  return value;
+}

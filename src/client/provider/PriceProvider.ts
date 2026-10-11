@@ -1,3 +1,5 @@
+import {Currency} from "../../model/Currency";
+
 export interface CoinInfo {
   cmcId: number;
   symbol: string;
@@ -7,4 +9,8 @@ export interface CoinInfo {
 export interface PriceProvider {
   findCoinBySymbol(symbol: string): Promise<CoinInfo | null>;
   getPrices(cmcIds: number[]): Promise<Map<number, number>>;
+}
+
+export interface CurrencyCatalogProvider {
+  listCurrencies(): Promise<Currency[]>;
 }

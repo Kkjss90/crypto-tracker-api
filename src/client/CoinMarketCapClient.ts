@@ -1,14 +1,17 @@
 import axios, {HttpStatusCode} from 'axios';
 import type {AxiosInstance} from 'axios';
-import {CoinInfo, PriceProvider} from "./provider/PriceProvider";
+import {CoinInfo, CurrencyCatalogProvider, PriceProvider} from "./provider/PriceProvider";
 import {Logger} from "../utils/Logger";
 import {ExternalApiError} from "../error/ExternalApiError";
+import {Currency} from "../model/Currency";
 
 const MAP_PATH = '/v1/cryptocurrency/map';
 const QUOTES_PATH = '/v2/cryptocurrency/quotes/latest';
 const QUOTE_CURRENCY = 'USD';
 const QUOTES_BATCH_SIZE = 100;
 const MAX_RESPONSE_BYTES = 2_000_000;
+const MAP_PAGE_SIZE = 5000;
+const MAX_MAP_PAGES = 20;
 
 export interface CoinMarketCapOptions {
   baseUrl: string;
@@ -28,6 +31,7 @@ interface MapEntry {
   id: number;
   symbol: string;
   name: string;
+  slug: string;
   rank: number | null;
 }
 
@@ -45,6 +49,7 @@ function parseMapEntries(data: unknown): MapEntry[] {
         id: item.id,
         symbol: item.symbol,
         name: item.name,
+        slug: typeof item.slug === 'string' ? item.slug : '',
         rank: typeof item.rank === 'number' ? item.rank : null,
       });
     }
@@ -69,7 +74,7 @@ function compareByRank(a: MapEntry, b: MapEntry): number {
   return rankA === rankB ? a.id - b.id : rankA - rankB;
 }
 
-export class CoinMarketCapClient implements PriceProvider {
+export class CoinMarketCapClient implements PriceProvider, CurrencyCatalogProvider {
   private readonly http: AxiosInstance;
   private readonly timeoutMs: number;
 
@@ -193,5 +198,37 @@ export class CoinMarketCapClient implements PriceProvider {
   private unexpectedResponse(path: string): ExternalApiError {
     Logger.error('CoinMarketCap returned an unexpected response', {path});
     return new ExternalApiError('Price provider returned an unexpected response');
+  }
+
+  async listCurrencies(): Promise<Currency[]> {
+    const byId = new Map<number, Currency>();
+
+    for (let page = 0; page < MAX_MAP_PAGES; page += 1) {
+      const response = await this.request(MAP_PATH, {
+        listing_status: 'active',
+        sort: 'cmc_rank',
+        start: String(page * MAP_PAGE_SIZE + 1),
+        limit: String(MAP_PAGE_SIZE),
+      });
+      this.assertSuccess(response, MAP_PATH);
+
+      if (!Array.isArray(response.data)) {
+        throw this.unexpectedResponse(MAP_PATH);
+      }
+
+      for (const entry of parseMapEntries(response.data)) {
+        byId.set(entry.id, {
+          cmcId: entry.id,
+          symbol: entry.symbol.toUpperCase(),
+          name: entry.name,
+          slug: entry.slug,
+          rank: entry.rank,
+        });
+      }
+
+      if (response.data.length < MAP_PAGE_SIZE) break;
+    }
+
+    return [...byId.values()];
   }
 }

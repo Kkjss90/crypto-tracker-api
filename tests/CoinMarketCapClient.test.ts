@@ -213,4 +213,63 @@ describe('CoinMarketCapClient', () => {
       expect(dump).not.toContain(API_KEY);
     });
   });
+
+  describe('listCurrencies', () => {
+    const entry = (id: number) => ({ id, rank: id, name: `Coin ${id}`, symbol: `c${id}`, slug: `coin-${id}` });
+    const page = (from: number, count: number) => Array.from({ length: count }, (_, i) => entry(from + i));
+    const params = (index: number) => new URL(server.requests[index].url, 'http://localhost').searchParams;
+
+    beforeEach(() => {
+      jest.spyOn(Logger, 'warn').mockImplementation(() => {});
+      jest.spyOn(Logger, 'error').mockImplementation(() => {});
+    });
+
+    it('собирает все страницы и просит активные монеты по рангу', async () => {
+      server.respondWith((url) => ok(Number(url.searchParams.get('start')) === 1 ? page(1, 5000) : page(5001, 3)));
+
+      const list = await client.listCurrencies();
+
+      expect(list).toHaveLength(5003);
+      expect(server.requests).toHaveLength(2);
+      expect(params(0).get('listing_status')).toBe('active');
+      expect(params(0).get('sort')).toBe('cmc_rank');
+      expect(params(0).get('limit')).toBe('5000');
+      expect(params(0).get('start')).toBe('1');
+      expect(params(1).get('start')).toBe('5001');
+      expect(list[0]).toEqual({ cmcId: 1, symbol: 'C1', name: 'Coin 1', slug: 'coin-1', rank: 1 });
+    });
+
+    it('останавливается на неполной странице', async () => {
+      server.respondWith(() => ok(page(1, 10)));
+
+      expect(await client.listCurrencies()).toHaveLength(10);
+      expect(server.requests).toHaveLength(1);
+    });
+
+    it('пустой ответ даёт пустой список', async () => {
+      server.respondWith(() => ok([]));
+
+      expect(await client.listCurrencies()).toEqual([]);
+    });
+
+    it('убирает дубли и пропускает некорректные записи', async () => {
+      server.respondWith(() => ok([entry(1), entry(1), { id: 'x' }, null, entry(2)]));
+
+      const list = await client.listCurrencies();
+
+      expect(list.map((item) => item.cmcId)).toEqual([1, 2]);
+    });
+
+    it.each([429, 500])('HTTP %i превращается в 502', async (status) => {
+      server.respondWith(() => ({ status, body: { data: null, status: { error_code: status } } }));
+
+      await expect(client.listCurrencies()).rejects.toMatchObject({ statusCode: 502, code: 'EXTERNAL_API_ERROR' });
+    });
+
+    it.each([['строка', 'oops'], ['объект', {}]])('данные другой формы (%s) превращаются в 502', async (_name, data) => {
+      server.respondWith(() => ok(data));
+
+      await expect(client.listCurrencies()).rejects.toMatchObject({ statusCode: 502 });
+    });
+  });
 });

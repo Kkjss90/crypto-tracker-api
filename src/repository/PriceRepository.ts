@@ -52,15 +52,25 @@ export class PriceRepository {
       total: totalRow.n,
     };
   }
-  createMany(points: NewPricePoint[]): number {
+
+  saveChanged(points: NewPricePoint[]): number {
     if (points.length === 0) return 0;
 
-    withTransaction(this.db, () => {
+    return withTransaction(this.db, () => {
+      const latest = this.db.prepare(
+        'SELECT price FROM price_history WHERE coin_id = ? ORDER BY fetched_at DESC, id DESC LIMIT 1',
+      );
       const insert = this.db.prepare('INSERT INTO price_history (coin_id, price, fetched_at) VALUES (?, ?, ?)');
+
+      let saved = 0;
       for (const point of points) {
+        const last = latest.get(point.coinId) as { price: number } | undefined;
+        if (last !== undefined && last.price === point.price) continue;
+
         insert.run(point.coinId, point.price, point.fetchedAt.toISOString());
+        saved += 1;
       }
+      return saved;
     });
-    return points.length;
   }
 }

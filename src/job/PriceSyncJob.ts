@@ -4,6 +4,7 @@ import {PriceProvider} from "../client/provider/PriceProvider";
 import {NewPricePoint} from "../model/PricePoint";
 import {Logger} from "../utils/Logger";
 import {AppError} from "../error/AppError";
+import {PeriodicTask} from "./PeriodicTask";
 
 export interface PriceSyncOptions {
   coins: CoinRepository;
@@ -15,31 +16,27 @@ export interface PriceSyncOptions {
 export interface SyncResult {
   tracked: number;
   saved: number;
+  unchanged: number;
 }
 
 export class PriceSyncJob {
-  private timer: NodeJS.Timeout | null = null;
-  private running: Promise<void> | null = null;
-  private started = false;
-  private stopRequested = false;
-  private stopPromise: Promise<void> | null = null;
+  private readonly task: PeriodicTask;
 
-  constructor(private readonly options: PriceSyncOptions) {}
+  constructor(private readonly options: PriceSyncOptions) {
+    this.task = new PeriodicTask({
+      name: 'price-sync',
+      intervalMs: options.intervalMs,
+      run: () => this.runOnce(),
+      onError: (error) => this.logFailure(error),
+    });
+  }
 
   start(): void {
-    if (this.started || this.stopRequested) {
-      Logger.warn('Price sync job was already started or stopped, ignoring start()');
-      return;
-    }
-    this.started = true;
-    Logger.info('Price sync job started', { intervalMs: this.options.intervalMs });
-    this.schedule(0);
+    this.task.start();
   }
 
   stop(): Promise<void> {
-    this.stopRequested = true;
-    this.stopPromise ??= this.drain();
-    return this.stopPromise;
+    return this.task.stop();
   }
 
   async runOnce(): Promise<SyncResult> {
@@ -48,7 +45,7 @@ export class PriceSyncJob {
     const tracked = this.options.coins.findAll();
     if (tracked.length === 0) {
       Logger.debug('Price sync skipped: no tracked coins');
-      return { tracked: 0, saved: 0 };
+      return {tracked: 0, saved: 0, unchanged: 0};
     }
 
     const fetched = await this.options.provider.getPrices(tracked.map((coin) => coin.cmcId));
@@ -57,46 +54,17 @@ export class PriceSyncJob {
     const current = this.options.coins.findAll();
     const points = current.flatMap((coin): NewPricePoint[] => {
       const price = fetched.get(coin.cmcId);
-      return price === undefined ? [] : [{ coinId: coin.id, price, fetchedAt }];
+      return price === undefined ? [] : [{coinId: coin.id, price, fetchedAt}];
     });
 
-    const saved = this.options.prices.createMany(points);
+    const saved = this.options.prices.saveChanged(points);
+    const result: SyncResult = {tracked: current.length, saved, unchanged: points.length - saved};
     Logger.info('Price sync completed', {
-      tracked: current.length,
-      saved,
+      ...result,
       missing: current.length - saved,
       durationMs: Date.now() - startedAt,
     });
-    return { tracked: current.length, saved };
-  }
-
-  private schedule(delayMs: number): void {
-    if (this.stopRequested) return;
-
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      this.running = this.tick().finally(() => {
-        this.running = null;
-        this.schedule(this.options.intervalMs);
-      });
-    }, delayMs);
-  }
-
-  private async tick(): Promise<void> {
-    try {
-      await this.runOnce();
-    } catch (error) {
-      this.logFailure(error);
-    }
-  }
-
-  private async drain(): Promise<void> {
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
-    await this.running;
-    Logger.info('Price sync job stopped');
+    return result;
   }
 
   private logFailure(error: unknown): void {
