@@ -6,7 +6,7 @@
   "keywords": [],
   "author": "a.m.knyazeva",
   "license": "ISC",
-  "description": "REST API для отслеживания и агрегации курсов криптовалют с интеграцией Binance для EvercodeLab fast-track",
+  "description": "REST API для отслеживания и агрегации курсов криптовалют с интеграцией CoinMarketCap",
   "engines": {
     "node": ">=26.1.0"
   },
